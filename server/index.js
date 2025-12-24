@@ -10,19 +10,24 @@ const PORT = process.env.PORT || 3001;
 app.use(cors());
 app.use(express.json());
 
+// basic health check
 app.get("/health", (req, res) => {
   res.json({ status: "ok" });
 });
 
-// STUDENTS CRUD
+// -------------------- STUDENTS --------------------
 app.get("/students", db.getStudents);
 app.post("/students", db.createStudent);
 app.put("/students/:id", db.updateStudent);
 app.delete("/students/:id", db.deleteStudent);
 
-// NOTES per student
+// -------------------- NOTES (per student) --------------------
 app.get("/students/:id/notes", db.getNotesByStudent);
 app.post("/students/:id/notes", db.createNote);
+
+// note update/delete (nested routes)
+app.put("/students/:studentId/notes/:noteId", db.updateNote);
+app.delete("/students/:studentId/notes/:noteId", db.deleteNote);
 
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
