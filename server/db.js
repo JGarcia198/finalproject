@@ -1,12 +1,23 @@
 const { Pool } = require("pg");
 require("dotenv").config();
 
-const pool = new Pool({
-  user: process.env.DB_USER,
-  host: process.env.DB_HOST,
-  database: process.env.DB_NAME,
-  password: process.env.DB_PASSWORD,
-  port: process.env.DB_PORT,
-});
+// Use DATABASE_URL if provided (typical in cloud hosts), otherwise use separate vars
+const connectionString = process.env.DATABASE_URL;
+
+const pool = connectionString
+  ? new Pool({
+      connectionString,
+      ssl:
+        process.env.NODE_ENV === "production"
+          ? { rejectUnauthorized: false }
+          : false,
+    })
+  : new Pool({
+      user: process.env.DB_USER,
+      host: process.env.DB_HOST,
+      database: process.env.DB_NAME,
+      password: process.env.DB_PASSWORD,
+      port: process.env.DB_PORT,
+    });
 
 module.exports = pool;
