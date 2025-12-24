@@ -1,67 +1,107 @@
-const pool = require("./db");
+const Pool = require("pg").Pool;
 
-// GET all students
+const pool = new Pool({
+  user: process.env.DB_USER,
+  host: process.env.DB_HOST,
+  database: process.env.DB_NAME,
+  password: process.env.DB_PASSWORD,
+  port: process.env.DB_PORT,
+});
+
+/* STUDENTS */
+
 const getStudents = async (req, res) => {
   try {
-    const results = await pool.query(
-      "SELECT * FROM students ORDER BY id ASC"
+    const result = await pool.query(
+      "SELECT * FROM students ORDER BY created_at DESC"
     );
-    res.json(results.rows);
+    res.json(result.rows);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to fetch students" });
   }
 };
 
-// POST create student
 const createStudent = async (req, res) => {
   const { name, grade } = req.body;
-  if (!name) return res.status(400).json({ error: "name is required" });
+
+  if (!name || !grade) {
+    return res.status(400).json({ error: "name and grade are required" });
+  }
 
   try {
-    const results = await pool.query(
+    const result = await pool.query(
       "INSERT INTO students (name, grade) VALUES ($1, $2) RETURNING *",
-      [name, grade || null]
+      [name, grade]
     );
-    res.status(201).json(results.rows[0]);
+    res.status(201).json(result.rows[0]);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to create student" });
   }
 };
 
-// PUT update student
 const updateStudent = async (req, res) => {
-  const id = parseInt(req.params.id);
+  const { id } = req.params;
   const { name, grade } = req.body;
 
   try {
-    const results = await pool.query(
-      "UPDATE students SET name = $1, grade = $2 WHERE id = $3 RETURNING *",
-      [name, grade || null, id]
+    const result = await pool.query(
+      "UPDATE students SET name=$1, grade=$2 WHERE id=$3 RETURNING *",
+      [name, grade, id]
     );
-    if (results.rowCount === 0) return res.status(404).json({ error: "Student not found" });
-    res.json(results.rows[0]);
+    res.json(result.rows[0]);
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to update student" });
   }
 };
 
-// DELETE student
 const deleteStudent = async (req, res) => {
-  const id = parseInt(req.params.id);
-
+  const { id } = req.params;
   try {
-    const results = await pool.query(
-      "DELETE FROM students WHERE id = $1 RETURNING *",
-      [id]
-    );
-    if (results.rowCount === 0) return res.status(404).json({ error: "Student not found" });
-    res.json({ message: "Student deleted", student: results.rows[0] });
+    await pool.query("DELETE FROM students WHERE id=$1", [id]);
+    res.json({ message: "Student deleted" });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: "Failed to delete student" });
+  }
+};
+
+/* NOTES */
+
+const getNotesByStudent = async (req, res) => {
+  const { id } = req.params;
+
+  try {
+    const result = await pool.query(
+      "SELECT * FROM notes WHERE student_id=$1 ORDER BY created_at DESC",
+      [id]
+    );
+    res.json(result.rows);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to fetch notes" });
+  }
+};
+
+const createNote = async (req, res) => {
+  const { id } = req.params;
+  const { note } = req.body;
+
+  if (!note) {
+    return res.status(400).json({ error: "note is required" });
+  }
+
+  try {
+    const result = await pool.query(
+      "INSERT INTO notes (student_id, note) VALUES ($1, $2) RETURNING *",
+      [id, note]
+    );
+    res.status(201).json(result.rows[0]);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: "Failed to create note" });
   }
 };
 
@@ -70,4 +110,6 @@ module.exports = {
   createStudent,
   updateStudent,
   deleteStudent,
+  getNotesByStudent,
+  createNote,
 };
