@@ -2,7 +2,6 @@ const pool = require("./db");
 
 // -------------------- STUDENTS --------------------
 
-// GET /students
 const getStudents = async (req, res) => {
   try {
     const result = await pool.query(
@@ -15,7 +14,6 @@ const getStudents = async (req, res) => {
   }
 };
 
-// POST /students
 const createStudent = async (req, res) => {
   try {
     const { name, grade } = req.body;
@@ -36,7 +34,6 @@ const createStudent = async (req, res) => {
   }
 };
 
-// PUT /students/:id
 const updateStudent = async (req, res) => {
   try {
     const { id } = req.params;
@@ -62,7 +59,6 @@ const updateStudent = async (req, res) => {
   }
 };
 
-// DELETE /students/:id
 const deleteStudent = async (req, res) => {
   try {
     const { id } = req.params;
@@ -82,13 +78,15 @@ const deleteStudent = async (req, res) => {
 
 // -------------------- NOTES (per student) --------------------
 
-// GET /students/:id/notes
 const getNotesByStudent = async (req, res) => {
   try {
     const { id } = req.params;
 
     const result = await pool.query(
-      "SELECT id, student_id, note, created_at FROM notes WHERE student_id = $1 ORDER BY id ASC",
+      `SELECT id, student_id, note, teacher_name, notify_emails, created_at
+       FROM notes
+       WHERE student_id = $1
+       ORDER BY id ASC`,
       [id]
     );
 
@@ -99,19 +97,33 @@ const getNotesByStudent = async (req, res) => {
   }
 };
 
-// POST /students/:id/notes
 const createNote = async (req, res) => {
   try {
     const { id } = req.params; // student id
-    const { note } = req.body;
+    const { note, teacher_name, notify_emails } = req.body;
 
     if (!note) {
       return res.status(400).json({ error: "note is required" });
     }
 
+    // teacher_name optional in request, but DB has default
+    const teacher = teacher_name && String(teacher_name).trim() !== ""
+      ? String(teacher_name).trim()
+      : "Unknown";
+
+    // notify_emails optional; expect array of strings
+    const emails =
+      Array.isArray(notify_emails)
+        ? notify_emails
+            .map((e) => String(e).trim())
+            .filter((e) => e.length > 0)
+        : [];
+
     const result = await pool.query(
-      "INSERT INTO notes (student_id, note) VALUES ($1, $2) RETURNING id, student_id, note, created_at",
-      [id, note]
+      `INSERT INTO notes (student_id, note, teacher_name, notify_emails)
+       VALUES ($1, $2, $3, $4)
+       RETURNING id, student_id, note, teacher_name, notify_emails, created_at`,
+      [id, note, teacher, emails]
     );
 
     res.status(201).json(result.rows[0]);
@@ -121,7 +133,6 @@ const createNote = async (req, res) => {
   }
 };
 
-// PUT /students/:studentId/notes/:noteId
 const updateNote = async (req, res) => {
   try {
     const { studentId, noteId } = req.params;
@@ -135,7 +146,7 @@ const updateNote = async (req, res) => {
       `UPDATE notes
        SET note = $1
        WHERE id = $2 AND student_id = $3
-       RETURNING id, student_id, note, created_at`,
+       RETURNING id, student_id, note, teacher_name, notify_emails, created_at`,
       [note, noteId, studentId]
     );
 
@@ -150,7 +161,6 @@ const updateNote = async (req, res) => {
   }
 };
 
-// DELETE /students/:studentId/notes/:noteId
 const deleteNote = async (req, res) => {
   try {
     const { studentId, noteId } = req.params;
