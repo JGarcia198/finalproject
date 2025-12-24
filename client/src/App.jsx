@@ -4,31 +4,58 @@ import "./App.css";
 const API = import.meta.env.VITE_API_URL || "http://localhost:3001";
 
 export default function App() {
+  // students
   const [students, setStudents] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loadingStudents, setLoadingStudents] = useState(true);
+
+  // selected student
+  const [selectedStudent, setSelectedStudent] = useState(null);
+
+  // notes
+  const [notes, setNotes] = useState([]);
+  const [loadingNotes, setLoadingNotes] = useState(false);
+
+  // errors
   const [err, setErr] = useState("");
 
-  // Create form
+  // student create form
   const [name, setName] = useState("");
   const [grade, setGrade] = useState("");
 
-  // Edit mode
-  const [editingId, setEditingId] = useState(null);
-  const [editName, setEditName] = useState("");
-  const [editGrade, setEditGrade] = useState("");
+  // note create form
+  const [newNote, setNewNote] = useState("");
+
+  // note edit state
+  const [editingNoteId, setEditingNoteId] = useState(null);
+  const [editNoteText, setEditNoteText] = useState("");
 
   async function loadStudents() {
     try {
       setErr("");
-      setLoading(true);
+      setLoadingStudents(true);
       const res = await fetch(`${API}/students`);
-      if (!res.ok) throw new Error(`GET /students failed (${res.status})`);
       const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || "Failed to load students");
       setStudents(Array.isArray(data) ? data : []);
     } catch (e) {
       setErr(e.message || "Failed to load students");
     } finally {
-      setLoading(false);
+      setLoadingStudents(false);
+    }
+  }
+
+  async function loadNotes(studentId) {
+    try {
+      setErr("");
+      setLoadingNotes(true);
+      const res = await fetch(`${API}/students/${studentId}/notes`);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || "Failed to load notes");
+      setNotes(Array.isArray(data) ? data : []);
+    } catch (e) {
+      setErr(e.message || "Failed to load notes");
+    } finally {
+      setLoadingNotes(false);
     }
   }
 
@@ -43,57 +70,97 @@ export default function App() {
       const res = await fetch(`${API}/students`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, grade }),
+        body: JSON.stringify({ name: name.trim(), grade: grade.trim() }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data?.error || "Failed to create student");
+
       setName("");
       setGrade("");
       await loadStudents();
     } catch (e) {
-      setErr(e.message || "Create failed");
+      setErr(e.message || "Create student failed");
     }
   }
 
-  function startEdit(s) {
-    setEditingId(s.id);
-    setEditName(s.name ?? "");
-    setEditGrade(s.grade ?? "");
+  function selectStudent(s) {
+    setSelectedStudent(s);
+    setEditingNoteId(null);
+    setEditNoteText("");
+    setNewNote("");
+    loadNotes(s.id);
   }
 
-  function cancelEdit() {
-    setEditingId(null);
-    setEditName("");
-    setEditGrade("");
-  }
+  async function createNote(e) {
+    e.preventDefault();
+    if (!selectedStudent) return;
 
-  async function saveEdit(id) {
     try {
       setErr("");
-      const res = await fetch(`${API}/students/${id}`, {
-        method: "PUT",
+      const res = await fetch(`${API}/students/${selectedStudent.id}/notes`, {
+        method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: editName, grade: editGrade }),
+        body: JSON.stringify({ note: newNote.trim() }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || "Failed to update student");
-      cancelEdit();
-      await loadStudents();
+      if (!res.ok) throw new Error(data?.error || "Failed to create note");
+
+      setNewNote("");
+      await loadNotes(selectedStudent.id);
     } catch (e) {
-      setErr(e.message || "Update failed");
+      setErr(e.message || "Create note failed");
     }
   }
 
-  async function deleteStudent(id) {
-    if (!confirm("Delete this student? This will also delete their notes.")) return;
+  function startEditNote(n) {
+    setEditingNoteId(n.id);
+    setEditNoteText(n.note);
+  }
+
+  function cancelEditNote() {
+    setEditingNoteId(null);
+    setEditNoteText("");
+  }
+
+  async function saveEditNote(noteId) {
+    if (!selectedStudent) return;
+
     try {
       setErr("");
-      const res = await fetch(`${API}/students/${id}`, { method: "DELETE" });
+      const res = await fetch(
+        `${API}/students/${selectedStudent.id}/notes/${noteId}`,
+        {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ note: editNoteText.trim() }),
+        }
+      );
       const data = await res.json();
-      if (!res.ok) throw new Error(data?.error || "Failed to delete student");
-      await loadStudents();
+      if (!res.ok) throw new Error(data?.error || "Failed to update note");
+
+      cancelEditNote();
+      await loadNotes(selectedStudent.id);
     } catch (e) {
-      setErr(e.message || "Delete failed");
+      setErr(e.message || "Update note failed");
+    }
+  }
+
+  async function deleteNote(noteId) {
+    if (!selectedStudent) return;
+    if (!confirm("Delete this note?")) return;
+
+    try {
+      setErr("");
+      const res = await fetch(
+        `${API}/students/${selectedStudent.id}/notes/${noteId}`,
+        { method: "DELETE" }
+      );
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || "Failed to delete note");
+
+      await loadNotes(selectedStudent.id);
+    } catch (e) {
+      setErr(e.message || "Delete note failed");
     }
   }
 
@@ -101,90 +168,148 @@ export default function App() {
     <div className="page">
       <header className="header">
         <h1>Anecdotal Notes App</h1>
-        <p>Vite + React frontend → Express API → PostgreSQL</p>
+        <p>Students + notes (React → Express → PostgreSQL)</p>
       </header>
 
       {err && <div className="error">{err}</div>}
 
-      <section className="card">
-        <h2>Add Student</h2>
-        <form onSubmit={createStudent} className="form">
-          <input
-            placeholder="Student name (e.g., Alex Rivera)"
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            required
-          />
-          <input
-            placeholder="Grade (e.g., 10)"
-            value={grade}
-            onChange={(e) => setGrade(e.target.value)}
-            required
-          />
-          <button type="submit">Add</button>
-        </form>
-      </section>
+      <div className="grid">
+        {/* LEFT: Students */}
+        <section className="card">
+          <h2>Students</h2>
 
-      <section className="card">
-        <h2>Students</h2>
+          <form onSubmit={createStudent} className="form">
+            <input
+              placeholder="Student name"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              required
+            />
+            <input
+              placeholder="Grade"
+              value={grade}
+              onChange={(e) => setGrade(e.target.value)}
+              required
+            />
+            <button type="submit">Add</button>
+          </form>
 
-        {loading ? (
-          <p>Loading…</p>
-        ) : students.length === 0 ? (
-          <p>No students yet. Add one above.</p>
-        ) : (
-          <table className="table">
-            <thead>
-              <tr>
-                <th>Name</th>
-                <th>Grade</th>
-                <th style={{ width: 240 }}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
+          {loadingStudents ? (
+            <p>Loading…</p>
+          ) : students.length === 0 ? (
+            <p>No students yet.</p>
+          ) : (
+            <ul className="list">
               {students.map((s) => (
-                <tr key={s.id}>
-                  <td>
-                    {editingId === s.id ? (
-                      <input value={editName} onChange={(e) => setEditName(e.target.value)} />
-                    ) : (
-                      s.name
-                    )}
-                  </td>
-                  <td>
-                    {editingId === s.id ? (
-                      <input value={editGrade} onChange={(e) => setEditGrade(e.target.value)} />
-                    ) : (
-                      s.grade
-                    )}
-                  </td>
-                  <td className="actions">
-                    {editingId === s.id ? (
-                      <>
-                        <button onClick={() => saveEdit(s.id)}>Save</button>
-                        <button className="secondary" onClick={cancelEdit}>
-                          Cancel
-                        </button>
-                      </>
-                    ) : (
-                      <>
-                        <button onClick={() => startEdit(s)}>Edit</button>
-                        <button className="danger" onClick={() => deleteStudent(s.id)}>
-                          Delete
-                        </button>
-                      </>
-                    )}
-                  </td>
-                </tr>
+                <li
+                  key={s.id}
+                  className={
+                    selectedStudent?.id === s.id ? "listItem active" : "listItem"
+                  }
+                  onClick={() => selectStudent(s)}
+                  role="button"
+                  tabIndex={0}
+                >
+                  <div>
+                    <div className="name">{s.name}</div>
+                    <div className="meta">Grade: {s.grade}</div>
+                  </div>
+                  <div className="meta">ID: {s.id}</div>
+                </li>
               ))}
-            </tbody>
-          </table>
-        )}
+            </ul>
+          )}
 
-        <div className="hint">
-          Backend URL: <code>{API}</code>
-        </div>
-      </section>
+          <div className="hint">
+            API: <code>{API}</code>
+          </div>
+        </section>
+
+        {/* RIGHT: Notes */}
+        <section className="card">
+          <h2>Anecdotal Notes</h2>
+
+          {!selectedStudent ? (
+            <p>Select a student to view/add notes.</p>
+          ) : (
+            <>
+              <div className="selected">
+                Selected: <strong>{selectedStudent.name}</strong> (Grade{" "}
+                {selectedStudent.grade})
+              </div>
+
+              <form onSubmit={createNote} className="noteForm">
+                <textarea
+                  placeholder="Write an anecdotal note..."
+                  value={newNote}
+                  onChange={(e) => setNewNote(e.target.value)}
+                  rows={3}
+                  required
+                />
+                <button type="submit">Add Note</button>
+              </form>
+
+              {loadingNotes ? (
+                <p>Loading notes…</p>
+              ) : notes.length === 0 ? (
+                <p>No notes yet.</p>
+              ) : (
+                <ul className="notes">
+                  {notes.map((n) => (
+                    <li key={n.id} className="noteItem">
+                      <div className="noteTop">
+                        <div className="meta">
+                          Note ID: {n.id} •{" "}
+                          {n.created_at
+                            ? new Date(n.created_at).toLocaleString()
+                            : ""}
+                        </div>
+                      </div>
+
+                      {editingNoteId === n.id ? (
+                        <>
+                          <textarea
+                            value={editNoteText}
+                            onChange={(e) => setEditNoteText(e.target.value)}
+                            rows={3}
+                          />
+                          <div className="actions">
+                            <button onClick={() => saveEditNote(n.id)}>
+                              Save
+                            </button>
+                            <button
+                              className="secondary"
+                              onClick={cancelEditNote}
+                              type="button"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <div className="noteText">{n.note}</div>
+                          <div className="actions">
+                            <button onClick={() => startEditNote(n)}>
+                              Edit
+                            </button>
+                            <button
+                              className="danger"
+                              onClick={() => deleteNote(n.id)}
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </>
+          )}
+        </section>
+      </div>
     </div>
   );
 }
